@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Route 398 — Oak Grove</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', 'Segoe UI', sans-serif;
+    background: #0a0a0f;
+    color: #e8e6e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: #13131a;
+    border: 1px solid #22222e;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .header {
+    padding: 1.5rem 1.75rem 1.25rem;
+    border-bottom: 1px solid #22222e;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .route-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .route-pill {
+    background: #e8261a;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+  }
+
+  .stop-name {
+    font-size: 22px;
+    font-weight: 500;
+    color: #f0ede6;
+    line-height: 1.2;
+  }
+
+  .stop-id {
+    font-size: 12px;
+    color: #555560;
+    margin-top: 4px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .refresh-btn {
+    background: none;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    color: #888890;
+    font-size: 12px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    margin-top: 2px;
+    font-family: inherit;
+  }
+
+  .refresh-btn:hover { border-color: #44445a; color: #c0bdb5; }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .arrivals {
+    padding: 0.5rem 0;
+  }
+
+  .arrival-row {
+    display: flex;
+    align-items: center;
+    padding: 0.85rem 1.75rem;
+    border-bottom: 1px solid #18181f;
+    transition: background 0.1s;
+  }
+
+  .arrival-row:last-child { border-bottom: none; }
+  .arrival-row:hover { background: #16161e; }
+
+  .mins {
+    font-family: 'DM Mono', monospace;
+    font-size: 20px;
+    font-weight: 500;
+    min-width: 72px;
+  }
+
+  .mins.due    { color: #e8261a; }
+  .mins.soon   { color: #f5a623; }
+  .mins.normal { color: #f0ede6; }
+
+  .towards {
+    font-size: 14px;
+    color: #9a9890;
+    flex: 1;
+  }
+
+  .vehicle {
+    font-size: 11px;
+    color: #44444e;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .footer {
+    padding: 0.85rem 1.75rem;
+    border-top: 1px solid #22222e;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .updated {
+    font-size: 11px;
+    color: #444450;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2a2a38;
+    transition: background 0.3s;
+  }
+  .dot.live { background: #3ecf6a; box-shadow: 0 0 6px #3ecf6a88; }
+
+  .state-msg {
+    padding: 2rem 1.75rem;
+    font-size: 14px;
+    color: #555560;
+    text-align: center;
+  }
+
+  .error-msg {
+    padding: 1.5rem 1.75rem;
+    font-size: 13px;
+    color: #c0443a;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="header">
+    <div>
+      <div class="route-badge">
+        <span class="route-pill">398</span>
+      </div>
+      <div class="stop-name">Oak Grove</div>
+      <div class="stop-id">490019123E · Pinner</div>
+    </div>
+    <button class="refresh-btn" id="refreshBtn" onclick="load()">Refresh</button>
+  </div>
+
+  <div class="arrivals" id="arrivals">
+    <div class="state-msg">Loading…</div>
+  </div>
+
+  <div class="footer">
+    <span class="updated" id="updated">—</span>
+    <span class="dot" id="dot"></span>
+  </div>
+</div>
+
+<script>
+const NAPTAN = '490019123E';
+const ROUTE  = '398';
+let timer;
+
+function minsFromSecs(secs) {
+  return Math.round(secs / 60);
+}
+
+function minsClass(secs) {
+  const m = secs / 60;
+  if (m <= 1) return 'due';
+  if (m <= 4) return 'soon';
+  return 'normal';
+}
+
+function minsLabel(secs) {
+  const m = minsFromSecs(secs);
+  if (m <= 0) return 'Due';
+  return m + ' min' + (m === 1 ? '' : 's');
+}
+
+function timestamp() {
+  const n = new Date();
+  return n.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+async function load() {
+  const btn = document.getElementById('refreshBtn');
+  const dot = document.getElementById('dot');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  dot.classList.remove('live');
+
+  try {
+    const tflUrl = `https://api.tfl.gov.uk/StopPoint/${NAPTAN}/Arrivals`;
+    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(tflUrl)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const filtered = data
+      .filter(a => a.lineName === ROUTE || a.lineId === ROUTE)
+      .sort((a, b) => a.timeToStation - b.timeToStation)
+      .slice(0, 6);
+
+    const el = document.getElementById('arrivals');
+
+    if (filtered.length === 0) {
+      el.innerHTML = '<div class="state-msg">No route 398 arrivals right now</div>';
+    } else {
+      el.innerHTML = filtered.map(a => `
+        <div class="arrival-row">
+          <div class="mins ${minsClass(a.timeToStation)}">${minsLabel(a.timeToStation)}</div>
+          <div class="towards">${a.towards || a.destinationName || '—'}</div>
+          <div class="vehicle">${a.vehicleId || ''}</div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('updated').textContent = 'Updated ' + timestamp();
+    dot.classList.add('live');
+
+  } catch (e) {
+    document.getElementById('arrivals').innerHTML =
+      `<div class="error-msg">Could not load arrivals<br><small>${e.message}</small></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+  }
+}
+
+load();
+clearInterval(timer);
+timer = setInterval(load, 30000);
+</script>
+
+</body>
+</html>
